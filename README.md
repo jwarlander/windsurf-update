@@ -42,3 +42,9 @@ _**NOTE:** The Windsurf archive contains a top-level `Windsurf` directory, which
 - `--install-path`: Where to install Windsurf (default: `$HOME/apps/windsurf`)
 - `--force-update`: Force update even if already up to date
 - `--yes`: Assume yes to all prompts (like removing an existing directory referenced by `--install-path`)
+
+## Future Plans / Ideas
+
+- Make the UI a bit nicer (perhaps look at https://github.com/charmbracelet)
+- Background mode with desktop notifications when new versions are available
+- Install a .desktop file for Windsurf
