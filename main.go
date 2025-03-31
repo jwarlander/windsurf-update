@@ -13,9 +13,9 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 
-	"github.com/hashicorp/go-version"
 	"github.com/schollz/progressbar/v3"
 )
 
@@ -89,9 +89,9 @@ func main() {
 		if err != nil {
 			fmt.Printf("Unable to check installed version: %v", err)
 		} else {
-			existing, _ := version.NewVersion(strings.TrimSpace(string(vsn)))
-			latest, _ := version.NewVersion(release.WindsurfVersion)
-			if !existing.LessThan(latest) {
+			existing := strings.TrimSpace(string(vsn))
+			latest := release.WindsurfVersion
+			if compareVersions(existing, latest) >= 0 {
 				fmt.Printf("Already at %s, no need to upgrade!\n", existing)
 				os.Exit(0)
 			}
@@ -351,4 +351,36 @@ func extractArchive(archivePath, destPath string) error {
 	}
 
 	return nil
+}
+
+func compareVersions(v1, v2 string) int {
+	// Split version strings into components
+	v1Parts := strings.Split(v1, ".")
+	v2Parts := strings.Split(v2, ".")
+
+	// Compare each component
+	maxLen := max(len(v1Parts), len(v2Parts))
+	for i := 0; i < maxLen; i++ {
+		// If v1 is shorter than v2, pad with "0"
+		v1Val := 0
+		if i < len(v1Parts) {
+			v1Val, _ = strconv.Atoi(v1Parts[i])
+		}
+
+		// If v2 is shorter than v1, pad with "0"
+		v2Val := 0
+		if i < len(v2Parts) {
+			v2Val, _ = strconv.Atoi(v2Parts[i])
+		}
+
+		// Compare the numeric values
+		if v1Val < v2Val {
+			return -1
+		} else if v1Val > v2Val {
+			return 1
+		}
+	}
+
+	// Versions are equal
+	return 0
 }

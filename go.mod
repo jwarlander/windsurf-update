@@ -2,10 +2,7 @@ module windsurf-update
 
 go 1.21
 
-require (
-	github.com/hashicorp/go-version v1.7.0
-	github.com/schollz/progressbar/v3 v3.14.1
-)
+require github.com/schollz/progressbar/v3 v3.14.1
 
 require (
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
