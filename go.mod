@@ -1,4 +1,4 @@
-module windsurf-update
+module github.com/jwarlander/windsurf-update
 
 go 1.21
 
