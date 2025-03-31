@@ -56,6 +56,7 @@ func main() {
 	downloadPath := flag.String("download-path", fmt.Sprintf(DefaultDownloadPath, homeDir), "Directory to download to")
 	installPath := flag.String("install-path", fmt.Sprintf(DefaultInstallPath, homeDir), "Where to extract the archive")
 	platform := flag.String("platform", "", "Platform to download for (e.g. darwin-amd64)")
+	force := flag.Bool("force", false, "Force update even if already up to date")
 	flag.Parse()
 
 	versionMarker := fmt.Sprintf(VersionMarker, *installPath)
@@ -83,7 +84,7 @@ func main() {
 	fmt.Printf("Found version: %s\n", release.WindsurfVersion)
 
 	// Compare with currently installed version, if available
-	if _, err := os.Stat(*installPath + "/Windsurf"); !os.IsNotExist(err) {
+	if _, err := os.Stat(*installPath + "/Windsurf"); !os.IsNotExist(err) && !*force {
 		vsn, err := os.ReadFile(versionMarker)
 		if err != nil {
 			fmt.Printf("Unable to check installed version: %v", err)
