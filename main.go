@@ -324,6 +324,11 @@ func extractArchive(archivePath, destPath string) error {
 			return err
 		}
 
+		// Avoid absolute paths and directory traversal outside the destination directory
+		if !filepath.IsLocal(header.Name) {
+			return fmt.Errorf("non-local path detected in tar file: %s", header.Name)
+		}
+
 		target := filepath.Join(destPath, header.Name)
 
 		switch header.Typeflag {
@@ -332,11 +337,6 @@ func extractArchive(archivePath, destPath string) error {
 				return err
 			}
 		case tar.TypeReg:
-			dir := filepath.Dir(target)
-			if err := os.MkdirAll(dir, 0755); err != nil {
-				return err
-			}
-
 			f, err := os.OpenFile(target, os.O_CREATE|os.O_RDWR, os.FileMode(header.Mode))
 			if err != nil {
 				return err
