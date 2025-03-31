@@ -21,9 +21,9 @@ import (
 
 const (
 	UpdateApiUrl        = "https://windsurf-stable.codeium.com/api/update/%s/stable/latest"
-	DefaultDownloadPath = "%s/Downloads"
-	DefaultInstallPath  = "%s/apps"
-	VersionMarker       = "%s/Windsurf/.windsurf-release"
+	DefaultDownloadPath = "~/Downloads"
+	DefaultInstallPath  = "~/apps/windsurf"
+	VersionMarker       = ".windsurf-release"
 )
 
 type ReleaseInfo struct {
@@ -53,27 +53,53 @@ func main() {
 		os.Exit(1)
 	}
 
-	downloadPath := flag.String("download-path", fmt.Sprintf(DefaultDownloadPath, homeDir), "Directory to download to")
-	installPath := flag.String("install-path", fmt.Sprintf(DefaultInstallPath, homeDir), "Where to extract the archive")
-	platform := flag.String("platform", "", "Platform to download for (e.g. darwin-amd64)")
-	force := flag.Bool("force", false, "Force update even if already up to date")
+	// Determine current & supported platforms
+	goPlatform := fmt.Sprintf("%s-%s", runtime.GOOS, runtime.GOARCH)
+	updatePlatform, platformSupported := platformMap[goPlatform]
+
+	supportedPlatforms := make([]string, 0, len(platformMap))
+	for platform := range platformMap {
+		supportedPlatforms = append(supportedPlatforms, platform)
+	}
+
+	downloadPath := flag.String(
+		"download-path",
+		strings.Replace(DefaultDownloadPath, "~", homeDir, 1),
+		fmt.Sprintf("Where to download the archive (default: %s)", DefaultDownloadPath),
+	)
+	installPath := flag.String(
+		"install-path",
+		strings.Replace(DefaultInstallPath, "~", homeDir, 1),
+		fmt.Sprintf("Where to install Windsurf (default: %s)", DefaultInstallPath),
+	)
+	platform := flag.String(
+		"platform",
+		"",
+		fmt.Sprintf(
+			"Platform to download for (current: %s, supported: [%s])",
+			updatePlatform,
+			strings.Join(supportedPlatforms, ", "),
+		),
+	)
+	forceUpdate := flag.Bool("force-update", false, "Force update even if already up to date")
+	yes := flag.Bool("yes", false, "Assume yes to all prompts")
 	flag.Parse()
 
-	versionMarker := fmt.Sprintf(VersionMarker, *installPath)
+	versionMarker := filepath.Join(*installPath, VersionMarker)
 
-	// Get update URL for current platform
-	if *platform == "" {
-		goPlatform := fmt.Sprintf("%s-%s", runtime.GOOS, runtime.GOARCH)
-		updatePlatform, ok := platformMap[goPlatform]
-		if !ok {
-			fmt.Fprintf(os.Stderr, "Platform %s is not supported, use --platform to specify a supported platform:\n", goPlatform)
-			for supportedPlatform := range platformMap {
-				fmt.Printf("  %s\n", supportedPlatform)
-			}
-			os.Exit(1)
-		}
-		*platform = updatePlatform
+	// Validate platform choice
+	if *platform != "" {
+		updatePlatform, platformSupported = platformMap[*platform]
 	}
+	if !platformSupported {
+		fmt.Fprintln(os.Stderr, "Platform is not supported, use --platform to specify a supported option:")
+		for _, supportedPlatform := range supportedPlatforms {
+			fmt.Fprintf(os.Stderr, "  %s", supportedPlatform)
+		}
+		os.Exit(1)
+	}
+	*platform = updatePlatform
+	fmt.Printf("Selected platform: %s\n", *platform)
 
 	// Get latest version info
 	release, err := getLatestRelease(*platform)
@@ -81,10 +107,10 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error checking for updates: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("Found version: %s\n", release.WindsurfVersion)
+	fmt.Printf("Found Windsurf version: %s\n", release.WindsurfVersion)
 
 	// Compare with currently installed version, if available
-	if _, err := os.Stat(*installPath + "/Windsurf"); !os.IsNotExist(err) && !*force {
+	if _, err := os.Stat(*installPath); !os.IsNotExist(err) && !*forceUpdate {
 		vsn, err := os.ReadFile(versionMarker)
 		if err != nil {
 			fmt.Printf("Unable to check installed version: %v", err)
@@ -107,17 +133,17 @@ func main() {
 	// Download the archive
 	archivePath := filepath.Join(*downloadPath, fmt.Sprintf("windsurf-%s.tar.gz", release.WindsurfVersion))
 	if _, err := os.Stat(archivePath); os.IsNotExist(err) {
-		fmt.Printf("Downloading %s to %s\n", release.WindsurfVersion, *downloadPath)
+		fmt.Printf("Downloading %s to %s:\n", release.WindsurfVersion, *downloadPath)
 		if err := downloadFile(release.URL, archivePath); err != nil {
 			fmt.Fprintf(os.Stderr, "Error downloading update: %v\n", err)
 			os.Exit(1)
 		}
 	} else {
-		fmt.Printf("Skipping download; archive already exists: %s\n", archivePath)
+		fmt.Printf("Download skipped (file already exists)\n")
 	}
 
 	// Check archive integrity
-	fmt.Println("Checking integrity of downloaded file")
+	fmt.Printf("Checking integrity of %s: ", archivePath)
 	archiveHash, err := calculateSHA256(archivePath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error calculating SHA256: %v\n", err)
@@ -127,6 +153,27 @@ func main() {
 		fmt.Fprintf(os.Stderr, "SHA256 mismatch: expected %s, got %s\n", release.SHA256Hash, archiveHash)
 		os.Exit(1)
 	}
+	fmt.Println("OK")
+
+	// Clean up existing installation & (re)create directory
+	if _, err := os.Stat(*installPath); !os.IsNotExist(err) {
+		if *yes {
+			fmt.Printf("Removing existing directory %s\n", *installPath)
+		} else {
+			fmt.Printf("Removing existing directory %s, are you sure? [y/N] ", *installPath)
+			var response string
+			fmt.Scanln(&response)
+			if len(response) < 1 || (response[0] != 'Y' && response[0] != 'y') {
+				fmt.Printf("Installation was aborted\n")
+				os.Exit(1)
+			}
+		}
+		if err := os.RemoveAll(*installPath); err != nil {
+			fmt.Fprintf(os.Stderr, "Error removing existing directory %s: %v\n", *installPath, err)
+			os.Exit(1)
+		}
+	}
+	os.MkdirAll(*installPath, 0755)
 
 	// Extract the archive
 	if strings.HasPrefix(*platform, "linux-") {
@@ -141,6 +188,7 @@ func main() {
 		f.WriteString(release.WindsurfVersion)
 		f.Close()
 		fmt.Printf("Successfully updated Windsurf to version %s\n", release.WindsurfVersion)
+		fmt.Println("Restart Windsurf to apply the update.")
 	} else {
 		fmt.Printf("Install your update manually, using the downloaded archive at %s\n", archivePath)
 	}
@@ -300,13 +348,6 @@ func extractArchive(archivePath, destPath string) error {
 	}
 	defer file.Close()
 
-	if _, err := os.Stat(destPath + "/Windsurf"); !os.IsNotExist(err) {
-		fmt.Printf("Removing existing installation at %s\n", destPath+"/Windsurf")
-		if err := os.RemoveAll(destPath + "/Windsurf"); err != nil {
-			return err
-		}
-	}
-
 	gzr, err := gzip.NewReader(file)
 	if err != nil {
 		return err
@@ -327,6 +368,12 @@ func extractArchive(archivePath, destPath string) error {
 		// Avoid absolute paths and directory traversal outside the destination directory
 		if !filepath.IsLocal(header.Name) {
 			return fmt.Errorf("non-local path detected in tar file: %s", header.Name)
+		}
+
+		// Remove first directory component to allow for a fully custom install path
+		header.Name = strings.TrimPrefix(header.Name, "Windsurf/")
+		if header.Name == "" {
+			continue
 		}
 
 		target := filepath.Join(destPath, header.Name)
